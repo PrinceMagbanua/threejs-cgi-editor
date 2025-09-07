@@ -2,7 +2,9 @@
 const props = defineProps(['node', 'selectedId', 'visibleOverride', 'isExpanded'])
 const emit = defineEmits(['toggle', 'select', 'toggle-expand'])
 
-function onToggle(e) { emit('toggle', { id: props.node.id, value: e.target.checked }) }
+function onToggle(event) { 
+  emit('toggle', { id: props.node.id, value: event.target.checked }) 
+}
 function onSelect() { emit('select', props.node.id) }
 function onToggleExpand() { emit('toggle-expand', props.node.id) }
 </script>

@@ -3,7 +3,7 @@
 A minimal Three.js + Vue 3 tool to view GLB models, apply JSON-driven variant visibility, pick GLTF material variants (colors), and inspect the full scene hierarchy with live visibility toggles. Includes HDR environment upload and local caching (IndexedDB). Deployed via GitHub Pages.
 
 ## Features
-- Upload GLB + JSON (required) and optional HDR; spinner while loading
+- Upload GLB (renders immediately), optional JSON, and optional HDR; spinner while loading
 - Draco decoding (WASM) and HDR environment
 - JSON variant dropdown (variant + optionPackToggle combinations)
 - GLTF color/material variants dropdown (KHR_materials_variants)
@@ -27,10 +27,15 @@ npm run dev
 Open http://localhost:5173 (or the shown port). Upload a GLB and the JSON, then (optionally) an HDR.
 
 ## Usage
-- Variant: choose a combination from the Variant dropdown (built from JSON)
-- Color: choose a material variant from GLB `KHR_materials_variants`
-- Outliner: toggle visibility per node; selection pulses the mesh emissive
-- Clear Cache: clears cached GLB/JSON/HDR and restores default HDR
+- Upload flow
+  - GLB: renders immediately. If the GLB contains `KHR_materials_variants`, the Color dropdown is active.
+  - JSON: enables the Variant dropdown (combinations built from `conditions.variant` + `optionPackToggle`). A hint appears if only GLB is loaded.
+  - HDR: overrides the default environment map; cached for refreshes.
+- Variant: pick a combination to apply JSON-driven visibility.
+- Color: choose a material variant from GLB `KHR_materials_variants`.
+- Outliner: toggle visibility per node; selection pulses the mesh emissive.
+- Overrides: manual visibility changes are temporary; on variant change the variant visibility is applied first, then your overrides are re-applied.
+- Clear Cache: prompts for confirmation, clears cached GLB/JSON/HDR and names, and reloads the page.
 
 ## Deploy to GitHub Pages
 - Push to `main`; the workflow `.github/workflows/deploy.yml` builds and publishes

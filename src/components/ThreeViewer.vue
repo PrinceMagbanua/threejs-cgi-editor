@@ -3,7 +3,7 @@ import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import * as THREE from 'three'
 import CameraControls from 'camera-controls'
 import SceneOutliner from './SceneOutliner.vue'
-import { buildTreeFromObject3D, findObjectByUUID, collectMeshes } from '../utils/sceneTree.js'
+import { findObjectByUUID, collectMeshes } from '../utils/sceneTree.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
@@ -49,7 +49,6 @@ const hdrButtonText = computed(() => hdrName.value ? `${hdrName.value}${hdrCache
 const hdrHoverText = computed(() => (hdrName.value ? 'Replace' : 'Upload'))
 // Outliner state
 const selectedNodeId = ref('')
-const visibilityOverrides = ref({})
 
 function initScene() {
   scene = new THREE.Scene()
@@ -253,7 +252,7 @@ function buildOptionsFromJson(cfg) {
 }
 
 function maybeInitializeModel() {
-  if (!loadedGLTF || !jsonConfig.value) {
+  if (!loadedGLTF) {
     return
   }
   // Attach and prepare the model once both GLB and JSON are available
@@ -263,14 +262,18 @@ function maybeInitializeModel() {
   model.position.y = -0.5
   model.traverse((child) => {
     if (child.isMesh) child.castShadow = true
-    child.visible = false
+    // If there's a JSON config we will control visibility via variant rules.
+    // Otherwise keep original visibility of the GLB.
+    if (jsonConfig.value) child.visible = false
     if (child.isMesh && !child.userData.originalMaterial) {
       child.userData.originalMaterial = child.material
     }
   })
   scene.add(model)
   currentModel.value = model
-  applySelectionFromKey(selectedKey.value)
+  if (jsonConfig.value) {
+    applySelectionFromKey(selectedKey.value)
+  }
   // Material variants
   const variants = extractVariantNames(loadedGLTF)
   colorVariants.value = variants
@@ -281,8 +284,6 @@ function maybeInitializeModel() {
   // Lights could be in JSON; re-apply on init as well
   applyAdditionalLights()
   isInitializing.value = false
-  // Reset outliner overrides on model init
-  visibilityOverrides.value = {}
 }
 
 function hideAll() {
@@ -312,8 +313,6 @@ function applySelectionFromKey(key) {
     obj.traverse((c) => (c.visible = true))
     obj.traverseAncestors((a) => (a.visible = true))
   })
-  // After variant visibility, re-apply user overrides
-  applyVisibilityOverrides()
 }
 
 watch(selectedKey, (val) => {
@@ -409,45 +408,26 @@ async function applyColorVariantViaParser(variantName) {
   })
   await Promise.all(tasks)
 }
-function applyVisibilityOverrides() {
-  if (!currentModel.value) return
-  Object.entries(visibilityOverrides.value).forEach(([uuid, vis]) => {
-    const obj = findObjectByUUID(currentModel.value, uuid)
-    if (obj) obj.visible = !!vis
-  })
-}
 
 function handleOutlinerToggle({ id, value }) {
   if (!currentModel.value) return
-  visibilityOverrides.value = { ...visibilityOverrides.value, [id]: value }
-  const obj = findObjectByUUID(currentModel.value, id)
-  if (obj) obj.visible = !!value
-}
-
-let pulseTimer = null
-function clearPulse() { if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null } }
-function handleOutlinerSelect(id) {
-  selectedNodeId.value = id
-  clearPulse()
   const obj = findObjectByUUID(currentModel.value, id)
   if (!obj) return
-  const meshes = obj.isMesh ? [obj] : collectMeshes(obj)
-  // lightweight emissive pulse
-  let on = false
-  pulseTimer = setInterval(() => {
-    on = !on
-    meshes.forEach((m) => {
-      const mat = Array.isArray(m.material) ? m.material : [m.material]
-      mat.forEach((mm) => { if (mm && 'emissive' in mm) { mm.emissive.setHex(on ? 0x00aa77 : 0x000000) } })
-    })
-  }, 600)
+  // Toggle when value is null, else set explicit
+  obj.visible = value === null ? !obj.visible : !!value
+}
+
+function handleOutlinerSelect(id) {
+  selectedNodeId.value = id
+  // No highlight/pulsing; selection only marks the row in the outliner
 }
 async function clearCache() {
-  try { await Promise.all([idbDelete('glb'), idbDelete('json'), idbDelete('hdr'), idbDelete('hdrName')]) } catch {}
-  // Reset to defaults
+  if (!confirm('Are you sure? This will remove cached GLB/JSON files and set HDR to the default one.')) return
+  try { await Promise.all([idbDelete('glb'), idbDelete('json'), idbDelete('hdr'), idbDelete('hdrName'), idbDelete('glbName'), idbDelete('jsonName')]) } catch {}
+  // Reset to defaults and reload
   hdrName.value = 'HDRI_STUDIO_Combined_5.hdr'
   hdrCached.value = false
-  loadHDRFromPath(defaultHdrPath)
+  location.reload()
 }
 
 onMounted(() => {
@@ -531,7 +511,10 @@ onBeforeUnmount(() => {
       <div class="tool">
         <div class="tool-label">Variant</div>
         <select class="select" v-model="selectedKey" :disabled="!jsonConfig || !currentModel">
-          <option v-for="opt in optionsList" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
+          <template v-if="jsonConfig">
+            <option v-for="opt in optionsList" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
+          </template>
+          <option v-else disabled value="">No JSON uploaded</option>
         </select>
       </div>
       <div class="tool">
@@ -546,9 +529,10 @@ onBeforeUnmount(() => {
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
     </div>
+    <div v-if="loadedGLTF && !jsonConfig" class="json-hint">Tip: upload a matching JSON file config above to enable viewing of per variant.</div>
   </div>
   <div class="right-panel" v-if="currentModel">
-    <SceneOutliner :root="currentModel" :selected-id="selectedNodeId" :visibility-overrides="visibilityOverrides" @select="handleOutlinerSelect" @toggle="handleOutlinerToggle" />
+    <SceneOutliner :root="currentModel" :selected-id="selectedNodeId" @select="handleOutlinerSelect" @toggle="handleOutlinerToggle" />
   </div>
 </template>
 
@@ -652,6 +636,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   background: rgba(255,255,255,0.8);
   pointer-events: none;
+}
+.json-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.9);
+  color: #333;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 .spinner {
   width: 48px;

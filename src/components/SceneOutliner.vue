@@ -6,7 +6,6 @@ import TreeNode from './TreeNode.vue'
 const props = defineProps({
   root: { type: Object, required: false },
   selectedId: { type: String, default: '' },
-  visibilityOverrides: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['select', 'toggle'])
 
@@ -44,13 +43,10 @@ const filteredTree = computed(() => {
   return filterNode(tree.value)
 })
 
-function rowVisible(node) {
-  const ov = props.visibilityOverrides[node.id]
-  return ov !== undefined ? ov : node.visible
-}
+function rowVisible(node) { return node.visible }
 
-function onToggle(node, value) {
-  emit('toggle', { id: node.id, value })
+function onToggle(node) {
+  emit('toggle', { id: node.id, value: node.value })
 }
 
 function onSelect(node) { emit('select', node.id) }
