@@ -42,7 +42,7 @@ const jsonButtonText = computed(() => jsonName.value ? `${jsonName.value}${jsonC
 const glbHoverText = computed(() => (glbName.value ? 'Replace' : 'Upload'))
 const jsonHoverText = computed(() => (jsonName.value ? 'Replace' : 'Upload'))
 // HDR controls
-const defaultHdrPath = '/HDRI_STUDIO_Combined_5.hdr'
+const defaultHdrPath = `${import.meta.env.BASE_URL}HDRI_STUDIO_Combined_5.hdr`
 const hdrName = ref('HDRI_STUDIO_Combined_5.hdr')
 const hdrCached = ref(false)
 const hdrButtonText = computed(() => hdrName.value ? `${hdrName.value}${hdrCached.value ? ' (Cached)' : ''}` : 'Upload HDR')
@@ -175,7 +175,7 @@ async function loadGLBFromFile(file) {
     const loader = new GLTFLoader()
     const draco = new DRACOLoader()
     // Draco assets placed in public root; adjust if you move them
-    draco.setDecoderPath('/')
+    draco.setDecoderPath(import.meta.env.BASE_URL)
     loader.setDRACOLoader(draco)
     loadedGLTF = await loader.loadAsync(url)
     maybeInitializeModel()
@@ -482,7 +482,7 @@ onMounted(() => {
         const url = URL.createObjectURL(blob)
         const loader = new GLTFLoader()
         const draco = new DRACOLoader()
-        draco.setDecoderPath('/')
+        draco.setDecoderPath(import.meta.env.BASE_URL)
         loader.setDRACOLoader(draco)
         loadedGLTF = await loader.loadAsync(url)
         URL.revokeObjectURL(url)
