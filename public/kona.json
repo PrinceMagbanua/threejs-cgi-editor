@@ -1,0 +1,188 @@
+{
+  "options": [
+    {
+      "name": "Kona",
+      "conditions": {
+        "optionPackToggle": false,
+        "variant": "Kona"
+      },
+      "visibleObjs": [
+        "stockBodyKit",
+        "stockMirrorCaps",
+        "stockWindows",
+        "stockWheels",
+        "petrolLicensePlate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    {
+      "name": "Premium",
+      "conditions": {
+        "optionPackToggle": false,
+        "variant": "Premium"
+      },
+      "visibleObjs": [
+        "premiumBodyKit",
+        "premiumMirrorCaps",
+        "premiumWindows",
+        "baseWheels",
+        "petrolLicensePlate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    {
+      "name": "Premium",
+      "conditions": {
+        "optionPackToggle": false,
+        "variant": "Kona Premium"
+      },
+      "visibleObjs": [
+        "premiumBodyKit",
+        "premiumMirrorCaps",
+        "premiumWindows",
+        "baseWheels",
+        "petrolLicensePlate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    {
+      "name": "Kona NLine",
+      "conditions": {
+        "optionPackToggle": true,
+        "variant": "Kona"
+      },
+      "visibleObjs": [
+        "nLineBodykit",
+        "stockMirrorCaps",
+        "stockWindows",
+        "nLineWheels",
+        "nLineLicenseplate",
+        "exteriorBaseModel",
+        "sunRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    {
+      "name": "Kona Premium NLine",
+      "conditions": {
+        "optionPackToggle": true,
+        "variant": "Premium"
+      },
+      "visibleObjs": [
+        "nLineBodykit",
+        "premiumMirrorCaps",
+        "premiumWindows",
+        "nLineWheels",
+        "nLineLicenseplate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    {
+      "name": "Kona Premium NLine",
+      "conditions": {
+        "optionPackToggle": true,
+        "variant": "Kona Premium"
+      },
+      "visibleObjs": [
+        "nLineBodykit",
+        "premiumMirrorCaps",
+        "premiumWindows",
+        "nLineWheels",
+        "nLineLicenseplate",
+        "exteriorBaseModel",
+        "sunRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    
+    {
+      "name": "Kona Elite",
+      "conditions": {
+        "optionPackToggle": false,
+        "variant": "Kona Elite"
+      },
+      "visibleObjs": [
+        "eliteBodyKit",
+        "stockMirrorCaps",
+        "stockWindows",
+        "stockWheels",
+        "petrolLicensePlate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    },
+    
+    {
+      "name": "Kona Elite N Line",
+      "conditions": {
+        "optionPackToggle": true,
+        "variant": "Kona Elite"
+      },
+      "visibleObjs": [
+        "nLineBodykit",
+        "stockMirrorCaps",
+        "stockWindows",
+        "nLineWheels",
+        "nLineLicenseplate",
+        "exteriorBaseModel",
+        "stockRoof",
+        "point007",
+        "point008",
+        "point009",
+        "point010"
+      ]
+    }
+  ],
+  "objectNames": {
+    "stockBodyKit": "STOCK_Bodykit",
+    "premiumBodyKit": "VARIANTGROUP_PREMIUM_Bodykit",
+    "eliteBodyKit": "VARIANTGROUP_ELITE_Bodykit",
+    "stockMirrorCaps": "STOCK_MirrorCaps",
+    "premiumMirrorCaps": "VARIANTGROUP_PREMIUM_MirrorCaps",
+    "stockWindows": "STOCK_Windows",
+    "premiumWindows": "VARIANTGROUP_PREMIUM_Windows",
+    "stockWheels": "VARIANTGROUP_Base_Wheels",
+    "baseWheels": "STOCK_Wheels",
+    "petrolLicensePlate": "STOCK_PETROL_Licenseplate",
+    "exteriorBaseModel": "ExteriorBaseModel",
+    "stockRoof": "STOCK_SteelRoof",
+    "sunRoof": "VARIANTGROUP_SunRoof",
+    "point007": "Point007",
+    "point008": "Point008",
+    "point009": "Point009",
+    "point010": "Point010",
+    "nLineBodykit": "VARIANTGROUP_NLINE_Bodykit",
+    "nLineLicenseplate": "VARIANTS_NLINE_Licenseplate",
+    "nLineWheels": "VARIANTGROUP_NLINE_Wheels"
+  }
+}
