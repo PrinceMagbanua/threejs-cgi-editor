@@ -49,6 +49,7 @@ const hdrButtonText = computed(() => hdrName.value ? `${hdrName.value}${hdrCache
 const hdrHoverText = computed(() => (hdrName.value ? 'Replace' : 'Upload'))
 // Outliner state
 const selectedNodeId = ref('')
+const showSidebar = ref(true)
 
 function initScene() {
   scene = new THREE.Scene()
@@ -532,7 +533,10 @@ onBeforeUnmount(() => {
     <div v-if="loadedGLTF && !jsonConfig" class="json-hint">Tip: upload a matching JSON file config above to enable viewing of per variant.</div>
   </div>
   <div class="right-panel" v-if="currentModel">
-    <SceneOutliner :root="currentModel" :selected-id="selectedNodeId" @select="handleOutlinerSelect" @toggle="handleOutlinerToggle" />
+    <div class="right-panel-inner" :class="{ collapsed: !showSidebar }">
+      <SceneOutliner :root="currentModel" :selected-id="selectedNodeId" @select="handleOutlinerSelect" @toggle="handleOutlinerToggle" />
+      <div class="right-panel-handle" @click="showSidebar = !showSidebar">{{ showSidebar ? '▸' : '◂' }}</div>
+    </div>
   </div>
 </template>
 
@@ -543,7 +547,15 @@ onBeforeUnmount(() => {
   width: 100vw;
   height: 100vh;
 }
-.right-panel { position: absolute; right: 0; top: 0; bottom: 0; }
+.right-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 350px; overflow: hidden; }
+.right-panel-inner { position: absolute; right: 0; top: 0; bottom: 0; width: 350px; transform: translateX(0); transition: transform .2s ease; }
+.right-panel-inner.collapsed { transform: translateX(100%); 
+.right-panel-handle {
+  left: -25px;
+} }
+.right-panel-handle { position: absolute; left: 0px; top: 50%; width: 25px; height: 25px; display:flex; align-items:center; justify-content:center;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.9); border: 1px solid #e7e7e7; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .toolbar {
   position: absolute;
   top: 16px;
@@ -558,6 +570,10 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.06);
   z-index: 2;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .tool {
   display: flex;
@@ -662,6 +678,7 @@ onBeforeUnmount(() => {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+.sidebar { height: 100%; background: transparent; }
 </style>
 
 

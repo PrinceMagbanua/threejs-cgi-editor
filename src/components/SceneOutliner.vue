@@ -7,7 +7,7 @@ const props = defineProps({
   root: { type: Object, required: false },
   selectedId: { type: String, default: '' },
 })
-const emit = defineEmits(['select', 'toggle'])
+const emit = defineEmits(['select', 'toggle', 'collapse'])
 
 const search = ref('')
 const expanded = ref(new Set())
@@ -71,7 +71,7 @@ function onSelect(node) { emit('select', node.id) }
  
 
 <style scoped>
-.outliner { width: 320px; height: 100%; display: flex; flex-direction: column; background: rgba(255,255,255,0.92); border-left: 1px solid #e7e7e7; }
+.outliner { width: 350px; height: 100%; display: flex; flex-direction: column; background: rgba(255,255,255,0.92); border-left: 1px solid #e7e7e7; }
 .outliner-controls { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #eee; }
 .search { flex: 1; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 13px; }
 .small { color: black; border: 1px solid #d9d9d9; background: #fff; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
