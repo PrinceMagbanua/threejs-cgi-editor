@@ -235,7 +235,32 @@ function selectAcOption(al, opt) {
   markDirtyAndEmit()
 }
 
+// Validation: find visibleObjs entries with no matching alias+glbName
+const exportIssues = computed(() => {
+  const validAliases = new Set(
+    localAliases.value.filter(a => a.alias && a.glbName).map(a => a.alias)
+  )
+  return localOptions.value
+    .map((opt, i) => ({
+      index: i,
+      name: opt.name || '(unnamed)',
+      missing: opt.visibleObjs.filter(a => !validAliases.has(a)),
+    }))
+    .filter(iss => iss.missing.length > 0)
+})
+
 function exportJson() {
+  // Strip broken refs from editor state before exporting
+  if (exportIssues.value.length) {
+    const validAliases = new Set(
+      localAliases.value.filter(a => a.alias && a.glbName).map(a => a.alias)
+    )
+    localOptions.value.forEach(opt => {
+      opt.visibleObjs = opt.visibleObjs.filter(a => validAliases.has(a))
+    })
+    markDirtyAndEmit()
+  }
+
   const data = buildJsonOutput()
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -453,6 +478,8 @@ function onSearchAcLeave() {
       <div class="export-info">
         Exports a <code>.json</code> config with default light positions, your options, and parts.
       </div>
+
+
       <div class="export-row">
         <div class="export-filename-wrap">
           <input
@@ -846,6 +873,7 @@ function onSearchAcLeave() {
 .export-section { display: flex; flex-direction: column; gap: 8px; }
 .export-info { font-size: 11px; color: #888; }
 .export-info code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+
 
 .export-row {
   display: flex;
