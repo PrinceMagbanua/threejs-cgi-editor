@@ -28,4 +28,11 @@ export function findObjectByUUID(root, uuid) {
   return found;
 }
 
+export function buildNameMap(root) {
+  const map = new Map();
+  if (!root) return map;
+  root.traverse((obj) => { if (obj.name) map.set(obj.name, obj); });
+  return map;
+}
+
 
