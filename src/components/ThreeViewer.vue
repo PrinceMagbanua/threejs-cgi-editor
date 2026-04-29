@@ -475,6 +475,74 @@ async function applyColorVariantViaParser(variantName) {
 let activeFlashTimeout = null
 let activeBoxHelper = null
 
+// Scene mode pick state
+let hoverObj = null
+let _tooltipTimer = null
+let _lastMouse = { x: 0, y: 0 }
+let _mouseDownPos = { x: 0, y: 0 }
+const _mouse = new THREE.Vector2()
+const _raycaster = new THREE.Raycaster()
+const tooltipVisible = ref(false)
+const tooltipPos = ref({ x: 0, y: 0 })
+const tooltipName = ref('')
+
+function _doRaycast(clientX, clientY) {
+  if (!currentModel.value || !containerRef.value) return null
+  const rect = containerRef.value.getBoundingClientRect()
+  _mouse.set(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  )
+  _raycaster.setFromCamera(_mouse, camera)
+  const hits = _raycaster.intersectObject(currentModel.value, true)
+  return hits.find(h => h.object.visible)?.object ?? null
+}
+
+function clearHoverState() {
+  tooltipVisible.value = false
+  if (_tooltipTimer) { clearTimeout(_tooltipTimer); _tooltipTimer = null }
+  hoverObj = null
+  if (containerRef.value) containerRef.value.style.cursor = ''
+}
+
+function onCanvasMouseMove(e) {
+  if (isJsonMode.value || !currentModel.value) return
+  _lastMouse = { x: e.clientX, y: e.clientY }
+  tooltipVisible.value = false
+  if (_tooltipTimer) { clearTimeout(_tooltipTimer); _tooltipTimer = null }
+  _tooltipTimer = setTimeout(() => {
+    hoverObj = _doRaycast(_lastMouse.x, _lastMouse.y)
+    if (containerRef.value) containerRef.value.style.cursor = hoverObj ? 'pointer' : ''
+    if (hoverObj) {
+      tooltipPos.value = { x: _lastMouse.x + 14, y: _lastMouse.y + 14 }
+      tooltipName.value = hoverObj.name || ''
+      tooltipVisible.value = true
+    }
+  }, 400)
+}
+
+function onCanvasMouseDown(e) {
+  _mouseDownPos = { x: e.clientX, y: e.clientY }
+}
+
+function onCanvasClick(e) {
+  if (isJsonMode.value || !currentModel.value) return
+  const dx = e.clientX - _mouseDownPos.x
+  const dy = e.clientY - _mouseDownPos.y
+  if (dx * dx + dy * dy > 25) return  // >5px movement = drag
+  const obj = _doRaycast(e.clientX, e.clientY)
+  if (!obj) return
+  clearHoverState()
+  clearActiveFlash()
+  const helper = new THREE.BoxHelper(obj, 0x00aaff)
+  scene.add(helper)
+  activeBoxHelper = helper
+  requestRender()
+  activeFlashTimeout = setTimeout(clearActiveFlash, 1200)
+  selectedNodeId.value = obj.uuid
+  rightPanelRef.value?.openAndShowScene?.()
+}
+
 function clearActiveFlash() {
   if (activeFlashTimeout) { clearTimeout(activeFlashTimeout); activeFlashTimeout = null }
   if (activeBoxHelper) {
@@ -785,7 +853,13 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Canvas + overlays -->
-    <div ref="containerRef" class="viewer" @mouseenter="clearActiveFlash(); requestRender()">
+    <div ref="containerRef" class="viewer"
+      @mouseenter="clearActiveFlash(); requestRender()"
+      @mousemove="onCanvasMouseMove"
+      @mousedown="onCanvasMouseDown"
+      @mouseleave="clearHoverState"
+      @click="onCanvasClick"
+    >
       <div v-if="isLoading" class="loading-overlay">
         <div class="spinner"></div>
       </div>
@@ -817,6 +891,12 @@ onBeforeUnmount(() => {
       @add-as-variant="openAddVariantModal"
       @clear-highlights="clearHighlights"
     />
+
+    <!-- Scene pick tooltip -->
+    <div v-if="tooltipVisible" class="pick-tooltip" :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }">
+      <span class="pick-tooltip-hint">click to find in scene</span>
+      <span v-if="tooltipName" class="pick-tooltip-name">{{ tooltipName }}</span>
+    </div>
 
     <!-- Add as Variant Option modal -->
     <div v-if="showAddVariantModal" class="modal-overlay" @click.self="showAddVariantModal = false">
@@ -1051,6 +1131,25 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s;
 }
 .clear-btn:hover { background: #fee; color: #c00; border-color: #f99; }
+
+/* ── Pick tooltip ── */
+.pick-tooltip {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pick-tooltip-hint { color: rgba(255,255,255,0.6); font-size: 10px; }
+.pick-tooltip-name { color: #fff; font-size: 12px; font-weight: 600; }
 
 /* ── Overlays ── */
 .loading-overlay {

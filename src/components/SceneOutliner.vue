@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { buildTreeFromObject3D } from '../utils/sceneTree.js'
 import TreeNode from './TreeNode.vue'
 
@@ -14,12 +14,33 @@ const emit = defineEmits(['select', 'toggle', 'highlight-toggle', 'add-as-varian
 const search = ref('')
 const expanded = ref(new Set())
 const tree = ref(null)
+const treeRef = ref(null)
 
 function rebuild() {
   tree.value = props.root ? buildTreeFromObject3D(props.root) : null
 }
 
 watch(() => [props.root, props.sceneVersion], rebuild, { immediate: true })
+
+function findAncestorIds(node, targetId, ancestors = []) {
+  if (node.id === targetId) return ancestors
+  for (const child of node.children || []) {
+    const result = findAncestorIds(child, targetId, [...ancestors, node.id])
+    if (result) return result
+  }
+  return null
+}
+
+watch(() => props.selectedId, (id) => {
+  if (!id || !tree.value) return
+  const ancestors = findAncestorIds(tree.value, id)
+  if (ancestors) ancestors.forEach(aid => expanded.value.add(aid))
+  nextTick(() => {
+    if (!treeRef.value) return
+    const el = treeRef.value.querySelector(`[data-node-id="${id}"]`)
+    el?.scrollIntoView({ block: 'nearest' })
+  })
+})
 
 function isExpanded(id) { return expanded.value.has(id) }
 function toggleExpand(id) {
@@ -68,7 +89,7 @@ function onHighlightToggle(id) { emit('highlight-toggle', id) }
       <button class="sel-btn clear" @click="$emit('clear-highlights')">✕ Clear</button>
     </div>
 
-    <div class="tree" v-if="filteredTree">
+    <div class="tree" ref="treeRef" v-if="filteredTree">
       <TreeNode
         :node="filteredTree"
         :selectedId="selectedId"

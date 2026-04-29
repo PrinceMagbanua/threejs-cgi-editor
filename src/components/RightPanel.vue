@@ -59,6 +59,7 @@ defineExpose({
   resetEditorWithConfig: (cfg) => jsonEditorRef.value?.resetWithConfig?.(cfg),
   addOptionFromScene: (opt) => jsonEditorRef.value?.addOptionFromScene?.(opt),
   switchToTab: (tab) => { activeTab.value = tab },
+  openAndShowScene: () => { showSidebar.value = true },
 })
 </script>
 

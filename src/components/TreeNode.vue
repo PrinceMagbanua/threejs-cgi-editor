@@ -11,7 +11,7 @@ function onHighlightToggle() { emit('highlight-toggle', props.node.id) }
 </script>
 
 <template>
-  <div class="row" :class="{ highlighted: isHighlighted(node.id) }">
+  <div class="row" :class="{ highlighted: isHighlighted(node.id), selected: node.id === selectedId }" :data-node-id="node.id">
     <button class="expand" @click="onToggleExpand">{{ (node.children&&node.children.length)? (isExpanded(node.id)? '▾':'▸') : '' }}</button>
     <input class="cb" type="checkbox" :checked="visibleOverride(node)" @change="onToggle" />
     <div class="label" @click="onSelect">{{ node.name }} <span class="type">{{ node.type }}</span></div>
@@ -46,6 +46,8 @@ function onHighlightToggle() { emit('highlight-toggle', props.node.id) }
   position: relative;
 }
 .row:hover { background: rgba(0,0,0,0.05); }
+.row.selected { background: rgba(0,100,255,0.08); border-left: 2px solid #0064ff; }
+.row.selected:hover { background: rgba(0,100,255,0.13); }
 .row.highlighted { background: rgba(250,180,0,0.13); }
 .row.highlighted:hover { background: rgba(250,180,0,0.22); }
 .row .expand { width: 18px; height: 18px; border: none; background: transparent; cursor: pointer; color: #666; flex-shrink: 0; }
