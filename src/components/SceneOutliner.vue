@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { buildTreeFromObject3D } from '../utils/sceneTree.js'
 import TreeNode from './TreeNode.vue'
 
@@ -12,6 +12,8 @@ const props = defineProps({
 const emit = defineEmits(['select', 'toggle', 'highlight-toggle', 'add-as-variant', 'clear-highlights'])
 
 const search = ref('')
+const searchFocused = ref(false)
+const searchRef = ref(null)
 const expanded = ref(new Set())
 const tree = ref(null)
 const treeRef = ref(null)
@@ -20,7 +22,14 @@ function rebuild() {
   tree.value = props.root ? buildTreeFromObject3D(props.root) : null
 }
 
-watch(() => [props.root, props.sceneVersion], rebuild, { immediate: true })
+watch(() => props.root, (newRoot) => {
+  rebuild()
+  if (newRoot) {
+    nextTick(() => expandAll(tree.value))
+  }
+}, { immediate: true })
+
+watch(() => props.sceneVersion, rebuild)
 
 function findAncestorIds(node, targetId, ancestors = []) {
   if (node.id === targetId) return ancestors
@@ -42,7 +51,7 @@ watch(() => props.selectedId, (id) => {
   })
 })
 
-function isExpanded(id) { return expanded.value.has(id) }
+function isExpanded(id) { return search.value.trim() ? true : expanded.value.has(id) }
 function toggleExpand(id) {
   if (expanded.value.has(id)) expanded.value.delete(id)
   else expanded.value.add(id)
@@ -71,13 +80,34 @@ function isHighlighted(id) { return props.highlightedIds.includes(id) }
 function onToggle(node) { emit('toggle', { id: node.id, value: node.value }) }
 function onSelect(id) { emit('select', id) }
 function onHighlightToggle(id) { emit('highlight-toggle', id) }
+
+function onCtrlF(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault()
+    searchRef.value?.focus()
+    searchRef.value?.select()
+    searchFocused.value = true
+  }
+}
+
+onMounted(() => document.addEventListener('keydown', onCtrlF))
+onUnmounted(() => document.removeEventListener('keydown', onCtrlF))
 </script>
 
 <template>
   <div class="outliner">
     <div class="outliner-controls">
-      <input class="search" v-model="search" placeholder="Search scene..." />
-      <div class="spacer"></div>
+      <input
+        ref="searchRef"
+        class="search"
+        :class="{ flash: searchFocused }"
+        v-model="search"
+        placeholder="Search Parts/ACC_..."
+        autocomplete="off"
+        @focus="searchFocused = true"
+        @blur="searchFocused = false"
+        @animationend="searchFocused = false"
+      />
       <button class="small" @click="() => expandAll(tree)">Expand</button>
       <button class="small" @click="collapseAll">Collapse</button>
     </div>
@@ -96,6 +126,7 @@ function onHighlightToggle(id) { emit('highlight-toggle', id) }
         :visible-override="rowVisible"
         :is-expanded="isExpanded"
         :is-highlighted="isHighlighted"
+        :search-query="search"
         @toggle="onToggle"
         @select="onSelect"
         @toggle-expand="toggleExpand"
@@ -108,10 +139,27 @@ function onHighlightToggle(id) { emit('highlight-toggle', id) }
 
 <style scoped>
 .outliner { width: 100%; height: 100%; display: flex; flex-direction: column; background: rgba(255,255,255,0.92); border-left: 1px solid #e7e7e7; }
-.outliner-controls { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #eee; flex-shrink: 0; }
-.search { flex: 1; padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 13px; background: #fff; color: #222; }
-.small { color: black; border: 1px solid #d9d9d9; background: #fff; border-radius: 8px; padding: 6px 8px; font-size: 12px; cursor: pointer; }
-.spacer { flex: 1; }
+.outliner-controls { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.search {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1.5px solid #d9d9d9;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #222;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search:focus { outline: none; border-color: #4d94ff; box-shadow: 0 0 0 3px rgba(77,148,255,0.15); }
+.search.flash { animation: search-flash 0.4s ease; }
+
+@keyframes search-flash {
+  0%   { border-color: #4d94ff; box-shadow: 0 0 0 4px rgba(77,148,255,0.35); }
+  60%  { border-color: #4d94ff; box-shadow: 0 0 0 4px rgba(77,148,255,0.35); }
+  100% { border-color: #4d94ff; box-shadow: 0 0 0 3px rgba(77,148,255,0.15); }
+}
+
+.small { color: black; border: 1px solid #d9d9d9; background: #fff; border-radius: 8px; padding: 6px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 
 .selection-bar {
   display: flex; align-items: center; gap: 6px;

@@ -1,5 +1,7 @@
 <script setup>
-const props = defineProps(['node', 'selectedId', 'visibleOverride', 'isExpanded', 'isHighlighted'])
+import { computed } from 'vue'
+
+const props = defineProps(['node', 'selectedId', 'visibleOverride', 'isExpanded', 'isHighlighted', 'searchQuery'])
 const emit = defineEmits(['toggle', 'select', 'toggle-expand', 'highlight-toggle'])
 
 function onToggle(event) {
@@ -8,13 +10,37 @@ function onToggle(event) {
 function onToggleExpand() { emit('toggle-expand', props.node.id) }
 function onSelect() { emit('select', props.node.id) }
 function onHighlightToggle() { emit('highlight-toggle', props.node.id) }
+
+const nameParts = computed(() => {
+  const name = props.node.name || ''
+  const q = props.searchQuery?.trim()
+  if (!q) return [{ text: name, highlight: false }]
+  const lower = name.toLowerCase()
+  const lowerQ = q.toLowerCase()
+  const parts = []
+  let cursor = 0
+  let idx
+  while ((idx = lower.indexOf(lowerQ, cursor)) !== -1) {
+    if (idx > cursor) parts.push({ text: name.slice(cursor, idx), highlight: false })
+    parts.push({ text: name.slice(idx, idx + q.length), highlight: true })
+    cursor = idx + q.length
+  }
+  if (cursor < name.length) parts.push({ text: name.slice(cursor), highlight: false })
+  return parts
+})
 </script>
 
 <template>
   <div class="row" :class="{ highlighted: isHighlighted(node.id), selected: node.id === selectedId }" :data-node-id="node.id">
     <button class="expand" @click="onToggleExpand">{{ (node.children&&node.children.length)? (isExpanded(node.id)? '▾':'▸') : '' }}</button>
     <input class="cb" type="checkbox" :checked="visibleOverride(node)" @change="onToggle" />
-    <div class="label" @click="onSelect">{{ node.name }} <span class="type">{{ node.type }}</span></div>
+    <div class="label" @click="onSelect">
+      <template v-for="(part, i) in nameParts" :key="i">
+        <mark v-if="part.highlight" class="match-highlight">{{ part.text }}</mark>
+        <span v-else>{{ part.text }}</span>
+      </template>
+      <span class="type">{{ node.type }}</span>
+    </div>
     <button
       class="hl-btn"
       :class="{ active: isHighlighted(node.id) }"
@@ -31,6 +57,7 @@ function onHighlightToggle() { emit('highlight-toggle', props.node.id) }
       :visible-override="visibleOverride"
       :is-expanded="isExpanded"
       :is-highlighted="isHighlighted"
+      :search-query="searchQuery"
       @toggle="$emit('toggle',$event)"
       @select="$emit('select',$event)"
       @toggle-expand="$emit('toggle-expand',$event)"
@@ -54,6 +81,13 @@ function onHighlightToggle() { emit('highlight-toggle', props.node.id) }
 .row .cb { cursor: pointer; flex-shrink: 0; }
 .row .label { font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .row .type { color: #999; font-size: 11px; margin-left: 6px; }
+
+.match-highlight {
+  background: #ffe066;
+  color: #5a3e00;
+  border-radius: 2px;
+  padding: 0 1px;
+}
 
 /* Highlight toggle button */
 .hl-btn {
