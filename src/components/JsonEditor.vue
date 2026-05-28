@@ -7,7 +7,7 @@ const props = defineProps({
   jsonFileName: { type: String, default: '' },
 })
 
-const emit = defineEmits(['focus-object', 'json-updated', 'preview-part', 'restore-scene', 'preview-variant'])
+const emit = defineEmits(['focus-object', 'json-updated', 'preview-part', 'restore-scene', 'preview-variant', 'preview-parts'])
 
 const localOptions = ref([])
 const localAliases = ref([])
@@ -272,9 +272,23 @@ function exportJson() {
   URL.revokeObjectURL(url)
 }
 
-// Preview helpers for alias rows
-function showPart(al) {
-  if (al.glbName) emit('preview-part', al.glbName)
+// Toggle-preview state for alias rows
+const toggledParts = ref(new Set())
+
+function toggleShowPart(al) {
+  if (!al.glbName) return
+  if (toggledParts.value.has(al.glbName)) {
+    toggledParts.value.delete(al.glbName)
+  } else {
+    toggledParts.value.add(al.glbName)
+  }
+  toggledParts.value = new Set(toggledParts.value) // trigger reactivity
+  const names = [...toggledParts.value]
+  if (names.length === 0) {
+    emit('restore-scene')
+  } else {
+    emit('preview-parts', names)
+  }
 }
 function onAcOptionEnter(opt) {
   emit('preview-part', opt)
@@ -464,7 +478,12 @@ function onSearchAcLeave() {
             placeholder="partName"
           />
 
-          <button class="icon-btn show-part-btn" @click="showPart(al)" title="Show part">👁</button>
+          <button
+            class="icon-btn show-part-btn"
+            :class="{ active: toggledParts.has(al.glbName) }"
+            @click="toggleShowPart(al)"
+            title="Show part"
+          >👁</button>
           <button class="icon-btn danger" @click="removeAlias(al)" title="Remove">✕</button>
         </div>
       </div>
@@ -867,6 +886,7 @@ function onSearchAcLeave() {
 .icon-btn.danger:hover { background: #fee; color: #c00; }
 .icon-btn.show-part-btn { color: #aaa; font-size: 13px; }
 .icon-btn.show-part-btn:hover { background: #eef4ff; color: #0055cc; }
+.icon-btn.show-part-btn.active { color: #0055cc; background: #ddeeff; }
 
 /* Export */
 .export-section { display: flex; flex-direction: column; gap: 8px; }

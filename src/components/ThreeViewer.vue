@@ -591,6 +591,19 @@ function previewPart(name) {
   requestRender()
 }
 
+function previewParts(names) {
+  if (!currentModel.value) return
+  currentModel.value.traverse((c) => { c.visible = false })
+  names.forEach((name) => {
+    const obj = nameMap.get(name)
+    if (!obj) return
+    obj.visible = true
+    obj.traverse((c) => { c.visible = true })
+    obj.traverseAncestors((a) => { a.visible = true })
+  })
+  requestRender()
+}
+
 function restoreScene() {
   if (!currentModel.value) return
   clearActiveFlash()
@@ -885,6 +898,7 @@ onBeforeUnmount(() => {
       @json-updated="handleJsonUpdated"
       @tab-change="handleTabChange"
       @preview-part="previewPart"
+      @preview-parts="previewParts"
       @restore-scene="restoreScene"
       @preview-variant="handlePreviewVariant"
       @highlight-toggle="toggleHighlight"
