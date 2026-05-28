@@ -554,10 +554,42 @@ function clearActiveFlash() {
   }
 }
 
+function focusOnPartFromOutside(obj) {
+  // Compute overall model bounding sphere so we know what "outside" means
+  const modelBox = new THREE.Box3().setFromObject(currentModel.value)
+  const modelCenter = new THREE.Vector3()
+  modelBox.getCenter(modelCenter)
+  const modelSize = new THREE.Vector3()
+  modelBox.getSize(modelSize)
+  const modelRadius = modelSize.length() / 2
+
+  // Center of the target part
+  const partBox = new THREE.Box3().setFromObject(obj)
+  const partCenter = new THREE.Vector3()
+  partBox.getCenter(partCenter)
+
+  // Direction from model center outward toward this part
+  const dir = new THREE.Vector3().subVectors(partCenter, modelCenter)
+  if (dir.lengthSq() < 0.0001) {
+    // Part is at the model center — fall back to current camera direction
+    dir.subVectors(camera.position, modelCenter)
+  }
+  dir.normalize()
+
+  // Place camera outside the model along that direction, clamped to control limits
+  const distance = Math.min(Math.max(modelRadius * 2.2, controls.minDistance), controls.maxDistance)
+  const camPos = new THREE.Vector3().copy(partCenter).addScaledVector(dir, distance)
+
+  // Never go below the model's lower bound
+  camPos.y = Math.max(camPos.y, modelCenter.y - modelSize.y * 0.1)
+
+  controls.setLookAt(camPos.x, camPos.y, camPos.z, partCenter.x, partCenter.y, partCenter.z, true)
+}
+
 function flashObject(obj) {
   if (!obj || isJsonMode.value) return
   clearActiveFlash()
-  controls.fitToBox(obj, true)
+  focusOnPartFromOutside(obj)
   const helper = new THREE.BoxHelper(obj, 0x00aaff)
   scene.add(helper)
   activeBoxHelper = helper
