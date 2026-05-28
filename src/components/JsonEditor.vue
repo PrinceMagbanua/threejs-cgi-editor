@@ -273,11 +273,8 @@ function exportJson() {
 }
 
 // Preview helpers for alias rows
-function onAliasRowEnter(al) {
+function showPart(al) {
   if (al.glbName) emit('preview-part', al.glbName)
-}
-function onAliasRowLeave() {
-  emit('restore-scene')
 }
 function onAcOptionEnter(opt) {
   emit('preview-part', opt)
@@ -433,13 +430,12 @@ function onSearchAcLeave() {
           <span>3D Object</span>
           <span>Part Alias/Nickname</span>
           <span></span>
+          <span></span>
         </div>
         <div
           v-for="al in filteredAliases"
           :key="al"
           class="alias-row"
-          @mouseenter="onAliasRowEnter(al)"
-          @mouseleave="onAliasRowLeave"
         >
         <div class="ac-wrap">
             <input
@@ -468,6 +464,7 @@ function onSearchAcLeave() {
             placeholder="partName"
           />
 
+          <button class="icon-btn show-part-btn" @click="showPart(al)" title="Show part">👁</button>
           <button class="icon-btn danger" @click="removeAlias(al)" title="Remove">✕</button>
         </div>
       </div>
@@ -787,7 +784,7 @@ function onSearchAcLeave() {
 
 .alias-header-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 24px;
+  grid-template-columns: 1fr 1fr 24px 24px;
   gap: 6px;
   font-size: 10px;
   font-weight: 600;
@@ -799,7 +796,7 @@ function onSearchAcLeave() {
 
 .alias-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 24px;
+  grid-template-columns: 1fr 1fr 24px 24px;
   gap: 6px;
   align-items: center;
   padding: 3px 2px;
@@ -868,6 +865,8 @@ function onSearchAcLeave() {
 }
 .icon-btn.danger { color: #999; }
 .icon-btn.danger:hover { background: #fee; color: #c00; }
+.icon-btn.show-part-btn { color: #aaa; font-size: 13px; }
+.icon-btn.show-part-btn:hover { background: #eef4ff; color: #0055cc; }
 
 /* Export */
 .export-section { display: flex; flex-direction: column; gap: 8px; }
