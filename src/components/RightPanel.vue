@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import SceneOutliner from './SceneOutliner.vue'
 import JsonEditor from './JsonEditor.vue'
+import AccessoriesPanel from './AccessoriesPanel.vue'
 
 const props = defineProps({
   jsonConfig: { type: Object, default: null },
@@ -25,7 +26,7 @@ const cascadeVisibility = ref(true)
 const jsonEditorRef = ref(null)
 
 // Panel width with drag-resize
-const panelWidth = ref(350)
+const panelWidth = ref(450)
 let dragStartX = 0
 let dragStartWidth = 0
 
@@ -38,7 +39,7 @@ function onResizeStart(e) {
 }
 function onResizeMove(e) {
   const delta = dragStartX - e.clientX
-  panelWidth.value = Math.max(260, Math.min(700, dragStartWidth + delta))
+  panelWidth.value = Math.max(450, Math.min(700, dragStartWidth + delta))
 }
 function onResizeEnd() {
   window.removeEventListener('mousemove', onResizeMove)
@@ -52,6 +53,11 @@ function switchTab(tab) {
 
 function onToggle(payload) {
   emit('toggle', { ...payload, cascade: cascadeVisibility.value })
+}
+
+function onViewInScene(id) {
+  switchTab('scene')
+  emit('select', id)
 }
 
 defineExpose({
@@ -81,6 +87,7 @@ defineExpose({
 
       <div class="tab-bar">
         <button class="tab-btn" :class="{ active: activeTab === 'scene' }" @click="switchTab('scene')">Scene</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'accessories' }" @click="switchTab('accessories')">Accessories</button>
         <button class="tab-btn" :class="{ active: activeTab === 'json' }" @click="switchTab('json')">JSON</button>
       </div>
 
@@ -96,6 +103,14 @@ defineExpose({
             @highlight-toggle="$emit('highlight-toggle', $event)"
             @add-as-variant="$emit('add-as-variant')"
             @clear-highlights="$emit('clear-highlights')"
+          />
+        </div>
+        <div class="tab-pane" v-show="activeTab === 'accessories'">
+          <AccessoriesPanel
+            :root="currentModel"
+            :scene-version="sceneVersion"
+            @toggle="onToggle"
+            @view-in-scene="onViewInScene"
           />
         </div>
         <div class="tab-pane" v-show="activeTab === 'json'">

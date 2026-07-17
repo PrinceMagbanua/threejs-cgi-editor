@@ -358,6 +358,17 @@ function hideAll() {
   currentModel.value.traverse((child) => { child.visible = false })
 }
 
+function hideAccessoriesAndProps() {
+  if (!currentModel.value) return
+  currentModel.value.traverse((obj) => {
+    if (obj.name?.includes('ACC_') || obj.name?.includes('PROP_')) {
+      obj.visible = false
+    }
+  })
+  sceneVersion.value++
+  requestRender()
+}
+
 function applySelectionFromKey(key) {
   if (!currentModel.value || !jsonConfig.value || !key) return
   const [variant, packStr] = key.split('|')
@@ -708,8 +719,11 @@ function handleTabChange(tab) {
   isJsonMode.value = tab === 'json'
   showLeftPanel.value = tab === 'scene'
   clearActiveFlash()
+  controls?.reset(true)
   if (tab === 'scene') {
     showAllObjects()
+  } else if (tab === 'accessories') {
+    hideAccessoriesAndProps()
   } else {
     if (jsonConfig.value && optionsList.value.length) {
       selectedKey.value = optionsList.value[0].key
