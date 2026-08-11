@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "camera-controls": "^3.1.0",
-    "three": "^0.146.0",
-    "three-gltf-extensions": "0.0.13",
+    "camera-controls": "^1.38.2",
+    "three": "^0.183.2",
+    "three-gltf-extensions": "0.0.15",
     "vue": "^3.5.18"
   },
   "devDependencies": {

@@ -54,6 +54,11 @@ const jsonButtonText = computed(() => jsonName.value ? `${jsonName.value}${jsonC
 const glbHoverText = computed(() => (glbName.value ? 'Replace' : 'Upload'))
 const jsonHoverText = computed(() => (jsonName.value ? 'Replace' : 'Upload'))
 
+// Recent JSON uploads (kept in IndexedDB alongside the current cached json/glb/hdr)
+const JSON_HISTORY_LIMIT = 10
+const jsonHistory = ref([])
+const showJsonHistory = ref(false)
+
 // HDR controls
 const defaultHdrPath = `${import.meta.env.BASE_URL}HDRI_STUDIO_Combined_5.hdr`
 const hdrName = ref('HDRI_STUDIO_Combined_5.hdr')
@@ -111,8 +116,8 @@ function initScene() {
   renderer.setSize(width, height)
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 0.6
-  renderer.outputEncoding = THREE.sRGBEncoding
+  renderer.toneMappingExposure = 1
+  renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   renderer.setClearColor(0x000000, 0)
@@ -242,25 +247,14 @@ function onFileSelected(e) {
   try { e.target.value = '' } catch {}
 }
 
-async function onJsonSelected(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-
-  if (rightPanelRef.value?.isJsonEditorDirty?.()) {
-    if (!confirm('The JSON editor has unsaved changes. Uploading a new file will overwrite them. Continue?')) {
-      try { e.target.value = '' } catch {}
-      return
-    }
-  }
-
+async function applyJsonText(text, name) {
   isJSONLoading.value = true
-  const text = await file.text()
   try {
     const parsed = JSON.parse(text)
     jsonConfig.value = parsed
     try { await idbSet('json', text) } catch {}
-    try { await idbSet('jsonName', file.name) } catch {}
-    jsonName.value = file.name
+    try { await idbSet('jsonName', name) } catch {}
+    jsonName.value = name
     jsonCached.value = false
     buildOptionsFromJson(parsed)
     applyAdditionalLights()
@@ -273,12 +267,55 @@ async function onJsonSelected(e) {
       maybeInitializeModel()
     }
     rightPanelRef.value?.resetEditorWithConfig?.(parsed)
+    return true
   } catch (err) {
     console.warn('Invalid JSON file', err)
+    return false
   } finally {
     isJSONLoading.value = false
-    try { e.target.value = '' } catch {}
   }
+}
+
+async function saveJsonToHistory(name, text) {
+  const withoutDupe = jsonHistory.value.filter((entry) => entry.name !== name)
+  const updated = [{ name, text, timestamp: Date.now() }, ...withoutDupe].slice(0, JSON_HISTORY_LIMIT)
+  jsonHistory.value = updated
+  try { await idbSet('jsonHistory', updated) } catch {}
+}
+
+async function removeJsonHistoryEntry(name) {
+  const updated = jsonHistory.value.filter((entry) => entry.name !== name)
+  jsonHistory.value = updated
+  try { await idbSet('jsonHistory', updated) } catch {}
+}
+
+async function loadJsonFromHistory(entry) {
+  if (rightPanelRef.value?.isJsonEditorDirty?.()) {
+    if (!confirm('The JSON editor has unsaved changes. Loading a cached file will overwrite them. Continue?')) return
+  }
+  showJsonHistory.value = false
+  await applyJsonText(entry.text, entry.name)
+}
+
+function formatHistoryTimestamp(ts) {
+  return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+async function onJsonSelected(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+
+  if (rightPanelRef.value?.isJsonEditorDirty?.()) {
+    if (!confirm('The JSON editor has unsaved changes. Uploading a new file will overwrite them. Continue?')) {
+      try { e.target.value = '' } catch {}
+      return
+    }
+  }
+
+  const text = await file.text()
+  const ok = await applyJsonText(text, file.name)
+  if (ok) await saveJsonToHistory(file.name, text)
+  try { e.target.value = '' } catch {}
 }
 
 async function onHdrSelected(e) {
@@ -426,8 +463,10 @@ function applyAdditionalLights() {
       extraLights.push(light)
     })
     if (mainDirLight) mainDirLight.intensity = 0
-  } else {
-    if (mainDirLight) mainDirLight.intensity = 0
+  } else if (mainDirLight) {
+    // No custom lightPositions for this model — keep the main light lit,
+    // matching production (additionalSceneItems is never called in this case).
+    mainDirLight.intensity = 1
   }
   requestRender()
 }
@@ -768,7 +807,12 @@ function handleOutlinerSelect(id) {
 
 async function clearCache() {
   if (!confirm('Are you sure? This will remove cached GLB/JSON files and set HDR to the default one.')) return
-  try { await Promise.all([idbDelete('glb'), idbDelete('json'), idbDelete('hdr'), idbDelete('hdrName'), idbDelete('glbName'), idbDelete('jsonName')]) } catch {}
+  try {
+    await Promise.all([
+      idbDelete('glb'), idbDelete('json'), idbDelete('hdr'),
+      idbDelete('hdrName'), idbDelete('glbName'), idbDelete('jsonName'), idbDelete('jsonHistory'),
+    ])
+  } catch {}
   hdrName.value = 'HDRI_STUDIO_Combined_5.hdr'
   hdrCached.value = false
   location.reload()
@@ -783,9 +827,10 @@ onMounted(() => {
   animate()
   ;(async () => {
     try {
-      const [glbBuf, jsonText, cachedGlbName, cachedJsonName, hdrBuf, cachedHdrName] = await Promise.all([
-        idbGet('glb'), idbGet('json'), idbGet('glbName'), idbGet('jsonName'), idbGet('hdr'), idbGet('hdrName')
+      const [glbBuf, jsonText, cachedGlbName, cachedJsonName, hdrBuf, cachedHdrName, storedHistory] = await Promise.all([
+        idbGet('glb'), idbGet('json'), idbGet('glbName'), idbGet('jsonName'), idbGet('hdr'), idbGet('hdrName'), idbGet('jsonHistory')
       ])
+      jsonHistory.value = Array.isArray(storedHistory) ? storedHistory : []
       if (jsonText) {
         try {
           jsonConfig.value = JSON.parse(jsonText)
@@ -850,12 +895,34 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div class="tool">
-            <div class="tool-label">JSON Config</div>
+            <div class="tool-label-row">
+              <div class="tool-label">JSON Config</div>
+              <button
+                v-if="jsonHistory.length"
+                class="history-toggle"
+                type="button"
+                title="Recent JSON files"
+                @click="showJsonHistory = !showJsonHistory"
+              >Recent ▾</button>
+            </div>
             <label class="file-btn">
               <input class="file-input" type="file" accept=".json,application/json" @change="onJsonSelected" />
               <span class="file-btn-text">{{ jsonButtonText }}</span>
               <span class="file-btn-hover">{{ jsonHoverText }}</span>
             </label>
+            <template v-if="showJsonHistory">
+              <div class="json-history-backdrop" @click="showJsonHistory = false"></div>
+              <div class="json-history-dropdown" @click.stop>
+                <div class="json-history-title">Recent JSON files</div>
+                <div v-for="entry in jsonHistory" :key="entry.name" class="json-history-item">
+                  <button class="json-history-load" type="button" @click="loadJsonFromHistory(entry)">
+                    <span class="json-history-name">{{ entry.name }}</span>
+                    <span class="json-history-time">{{ formatHistoryTimestamp(entry.timestamp) }}</span>
+                  </button>
+                  <button class="json-history-remove" type="button" title="Remove" @click="removeJsonHistoryEntry(entry.name)">×</button>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="tool">
             <div class="tool-label">HDR Environment</div>
@@ -1116,12 +1183,98 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
 }
 .tool-label {
   font-size: 11px;
   color: #888;
   padding-left: 2px;
 }
+.tool-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.history-toggle {
+  border: none;
+  background: none;
+  color: #1a73e8;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.history-toggle:hover { text-decoration: underline; }
+
+.json-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.json-history-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 21;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.json-history-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #999;
+  padding: 4px 6px;
+}
+.json-history-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.json-history-load {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  padding: 5px 6px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+.json-history-load:hover { background: #f2f5fb; }
+.json-history-name {
+  font-size: 12px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.json-history-time {
+  font-size: 10px;
+  color: #999;
+}
+.json-history-remove {
+  border: none;
+  background: none;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.json-history-remove:hover { background: #fdeaea; color: #d32f2f; }
 
 /* File upload buttons */
 .file-btn {
