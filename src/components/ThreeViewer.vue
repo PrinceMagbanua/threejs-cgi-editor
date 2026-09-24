@@ -89,7 +89,7 @@ const sceneVersion = ref(0)
 function applyQualityPreset(preset) {
   const q = QUALITY_PRESETS[preset]
   if (!q || !renderer) return
-  renderer.setPixelRatio(q.pixelRatio())
+  renderer.setPixelRatio(q.pixelRatio() * q.resolutionScale)
   renderer.shadowMap.enabled = q.shadowEnabled
   renderer.shadowMap.type = q.shadowType
   if (mainDirLight) {
@@ -186,7 +186,7 @@ function onResize() {
   camera.updateProjectionMatrix()
   renderer.setSize(width, height)
   const q = QUALITY_PRESETS[currentQuality.value]
-  renderer.setPixelRatio(q ? q.pixelRatio() : window.devicePixelRatio)
+  renderer.setPixelRatio(q ? q.pixelRatio() * q.resolutionScale : window.devicePixelRatio)
   requestRender()
 }
 

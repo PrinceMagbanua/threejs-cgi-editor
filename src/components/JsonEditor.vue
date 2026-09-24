@@ -1,5 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { loadMonaco } from '../utils/monacoSetup.js'
+import { KONA_JSON_SCHEMA, KONA_JSON_SCHEMA_URI, findReferentialErrors, MARKER_SEVERITY_ERROR } from '../utils/konaJsonSchema.js'
 
 const props = defineProps({
   jsonConfig: { type: Object, default: null },
@@ -102,6 +104,17 @@ function resetWithConfig(cfg) {
 
 onMounted(() => { if (props.jsonConfig) resetWithConfig(props.jsonConfig) })
 
+const uploadedFileLabel = computed(() => {
+  if (!props.jsonFileName) return 'uploaded defaults'
+  return props.jsonFileName.replace(/\.json$/i, '')
+})
+
+function resetToUploadedDefaults() {
+  if (!props.jsonConfig) return
+  if (isDirty.value && !confirm(`Are you sure? Your changes won't be saved.`)) return
+  resetWithConfig(props.jsonConfig)
+}
+
 function addOptionFromScene({ name, variant, optionPackToggle, glbNames }) {
   const visibleObjs = localAliases.value
     .filter(a => glbNames.includes(a.glbName) && a.alias)
@@ -113,6 +126,111 @@ function addOptionFromScene({ name, variant, optionPackToggle, glbNames }) {
 }
 
 defineExpose({ isDirty: () => isDirty.value, resetWithConfig, addOptionFromScene })
+
+// ---------------------------------------------------------------------------
+// Freeform JSON editor (Monaco), toggled from the structured view
+// ---------------------------------------------------------------------------
+const showFreeformModal = ref(false)
+const freeformLoading = ref(false)
+const freeformMarkers = ref([]) // merged schema + referential markers, sorted by line
+const editorContainerEl = ref(null)
+let monaco = null
+let monacoEditor = null
+let monacoModel = null
+let markersListenerDisposable = null
+
+const freeformHasErrors = computed(() =>
+  freeformMarkers.value.some(m => m.severity === MARKER_SEVERITY_ERROR)
+)
+
+function openFreeformModal() {
+  showFreeformModal.value = true
+  freeformLoading.value = true
+  nextTick(() => mountFreeformEditor())
+}
+
+function closeFreeformModal() {
+  showFreeformModal.value = false
+  teardownFreeformEditor()
+}
+
+async function mountFreeformEditor() {
+  monaco = await loadMonaco()
+  freeformLoading.value = false
+  if (!showFreeformModal.value) return // closed while Monaco was loading
+
+  monaco.json.jsonDefaults.setDiagnosticsOptions({
+    validate: true,
+    schemas: [{ uri: KONA_JSON_SCHEMA_URI, fileMatch: [KONA_JSON_SCHEMA_URI], schema: KONA_JSON_SCHEMA }],
+  })
+
+  const text = JSON.stringify(buildJsonOutput(), null, 2)
+  monacoModel = monaco.editor.createModel(text, 'json', monaco.Uri.parse(KONA_JSON_SCHEMA_URI))
+
+  monacoEditor = monaco.editor.create(editorContainerEl.value, {
+    model: monacoModel,
+    theme: 'vs',
+    fontSize: 12,
+    minimap: { enabled: true },
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    tabSize: 2,
+  })
+
+  markersListenerDisposable = monaco.editor.onDidChangeMarkers((uris) => {
+    if (uris.some(u => u.toString() === monacoModel.uri.toString())) refreshMarkers()
+  })
+  monacoModel.onDidChangeContent(() => scheduleReferentialCheck())
+
+  refreshReferentialMarkers()
+  refreshMarkers()
+}
+
+let referentialCheckTimer = null
+function scheduleReferentialCheck() {
+  clearTimeout(referentialCheckTimer)
+  referentialCheckTimer = setTimeout(refreshReferentialMarkers, 150)
+}
+
+function refreshReferentialMarkers() {
+  if (!monacoModel) return
+  const text = monacoModel.getValue()
+  let referential = []
+  try {
+    referential = findReferentialErrors(text)
+  } catch {
+    referential = [] // malformed JSON — schema/syntax markers already cover this
+  }
+  monaco.editor.setModelMarkers(monacoModel, 'kona-referential', referential)
+}
+
+function refreshMarkers() {
+  if (!monacoModel) return
+  const all = monaco.editor.getModelMarkers({ resource: monacoModel.uri })
+  freeformMarkers.value = [...all].sort((a, b) => a.startLineNumber - b.startLineNumber)
+}
+
+function teardownFreeformEditor() {
+  clearTimeout(referentialCheckTimer)
+  markersListenerDisposable?.dispose()
+  markersListenerDisposable = null
+  monacoEditor?.dispose()
+  monacoEditor = null
+  monacoModel?.dispose()
+  monacoModel = null
+  freeformMarkers.value = []
+}
+
+function applyFreeformJson() {
+  if (freeformHasErrors.value || !monacoModel) return
+  const parsed = JSON.parse(monacoModel.getValue())
+  resetWithConfig(parsed)
+  isDirty.value = true
+  emit('json-updated', buildJsonOutput())
+  closeFreeformModal()
+}
+
+onBeforeUnmount(() => teardownFreeformEditor())
 
 function buildJsonOutput() {
   const objectNames = {}
@@ -131,14 +249,6 @@ function markDirtyAndEmit() {
   isDirty.value = true
   emit('json-updated', buildJsonOutput())
 }
-
-const filteredAliases = computed(() => {
-  const q = aliasSearch.value.trim().toLowerCase()
-  if (!q) return localAliases.value
-  return localAliases.value.filter(a =>
-    a.alias.toLowerCase().includes(q) || a.glbName.toLowerCase().includes(q)
-  )
-})
 
 const aliasKeys = computed(() => localAliases.value.map(a => a.alias).filter(Boolean))
 const aliasGlbSet = computed(() => new Set(localAliases.value.map(a => a.glbName)))
@@ -159,6 +269,13 @@ function removeOption(i) {
     expandedOption.value--
   }
   markDirtyAndEmit()
+}
+
+// conditions.variant is usually a string, but some production configs store
+// multiple SubGroup Names as an array — render either as a plain comma list.
+function formatVariant(variant) {
+  if (Array.isArray(variant)) return variant.join(', ')
+  return variant || ''
 }
 
 function toggleExpand(i) {
@@ -335,6 +452,10 @@ function onSearchAcLeave() {
 <template>
   <div class="json-editor">
 
+    <div class="freeform-toggle-bar">
+      <button class="freeform-toggle-btn" @click="openFreeformModal">View WYSIWYG Editor</button>
+    </div>
+
     <!-- Section A: Variant Options -->
     <section class="editor-section">
       <div class="section-header">
@@ -351,8 +472,10 @@ function onSearchAcLeave() {
         :class="{ 'option-card--expanded': expandedOption === i }"
       >
         <div class="option-header" @click="toggleExpand(i)">
-          <span class="option-name">{{ opt.name || '(unnamed)' }}</span>
-          <span class="option-tag" v-if="opt.variant">{{ opt.variant }}{{ opt.optionPackToggle ? ' + Pack' : '' }}</span>
+          <div class="option-header-main">
+            <span class="option-name">{{ opt.name || '(unnamed)' }}</span>
+            <span class="option-variant-line" v-if="formatVariant(opt.variant)">{{ formatVariant(opt.variant) }}{{ opt.optionPackToggle ? ' + Pack' : '' }}</span>
+          </div>
           <span v-if="expandedOption === i" class="previewing-badge">Previewing</span>
           <div class="option-actions">
             <button class="icon-btn danger" @click.stop="removeOption(i)" title="Delete">✕</button>
@@ -421,16 +544,13 @@ function onSearchAcLeave() {
               v-for="name in searchAcOptions"
               :key="name"
               class="search-ac-option"
+              :class="{ 'search-ac-option--added': aliasGlbSet.has(name) }"
               @mouseenter="onSearchAcEnter(name)"
               @mouseleave="onSearchAcLeave"
+              @mousedown.prevent="addPartFromSearch(name)"
             >
               <span class="search-ac-name">{{ name }}</span>
-              <button
-                v-if="!aliasGlbSet.has(name)"
-                class="search-ac-add-btn"
-                @mousedown.prevent="addPartFromSearch(name)"
-                title="Add to parts list"
-              >+ Add</button>
+              <span v-if="!aliasGlbSet.has(name)" class="search-ac-add-btn">+ Add</span>
               <span v-else class="search-ac-added">Added</span>
             </div>
           </div>
@@ -447,7 +567,7 @@ function onSearchAcLeave() {
           <span></span>
         </div>
         <div
-          v-for="al in filteredAliases"
+          v-for="al in localAliases"
           :key="al"
           class="alias-row"
         >
@@ -510,6 +630,11 @@ function onSearchAcLeave() {
       </div>
     </section>
 
+    <div v-if="props.jsonConfig" class="reset-defaults-bar">
+      <span class="reset-defaults-hint">Editing in-memory copy of <strong>{{ uploadedFileLabel }}</strong></span>
+      <button class="reset-defaults-btn" @click="resetToUploadedDefaults">Reset to {{ uploadedFileLabel }} defaults</button>
+    </div>
+
   </div>
 
   <!-- Bulk add modal -->
@@ -569,6 +694,49 @@ function onSearchAcLeave() {
       </div>
     </div>
   </teleport>
+
+  <!-- Freeform JSON editor (Monaco) -->
+  <teleport to="body">
+    <div v-if="showFreeformModal" class="freeform-overlay" @click.self="closeFreeformModal">
+      <div class="freeform-modal">
+        <div class="freeform-header">
+          <span class="freeform-title">Freeform JSON Editor</span>
+          <button class="bulk-close" @click="closeFreeformModal">✕</button>
+        </div>
+
+        <div class="freeform-body">
+          <div v-if="freeformLoading" class="freeform-loading">Loading editor…</div>
+          <div ref="editorContainerEl" class="freeform-monaco"></div>
+
+          <div class="freeform-errors" v-if="freeformMarkers.length">
+            <div class="freeform-errors-title">
+              <template v-if="freeformHasErrors">⚠ Fix the following before applying:</template>
+              <template v-else>Warnings (Apply is still allowed):</template>
+            </div>
+            <div
+              v-for="(m, i) in freeformMarkers"
+              :key="i"
+              class="freeform-error-row"
+              :class="{ 'is-warning': m.severity !== MARKER_SEVERITY_ERROR }"
+            >
+              <span class="freeform-error-line">Line {{ m.startLineNumber }}</span>
+              <span class="freeform-error-msg">{{ m.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="freeform-footer">
+          <span v-if="freeformHasErrors" class="freeform-block-hint">
+            Apply is disabled — {{ freeformMarkers.filter(m => m.severity === MARKER_SEVERITY_ERROR).length }} error(s) above must be fixed first.
+          </span>
+          <div class="freeform-footer-btns">
+            <button class="bulk-btn cancel" @click="closeFreeformModal">Cancel</button>
+            <button class="bulk-btn confirm" :disabled="freeformHasErrors" @click="applyFreeformJson">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
@@ -587,6 +755,58 @@ function onSearchAcLeave() {
   padding: 12px;
   border-bottom: 1px solid #eee;
 }
+
+.freeform-toggle-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px 0;
+  flex-shrink: 0;
+}
+.freeform-toggle-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  color: #333;
+  font-family: 'Menlo', 'Consolas', monospace;
+}
+.freeform-toggle-btn:hover { background: #f0f5ff; border-color: #1a73e8; color: #1a73e8; }
+
+.reset-defaults-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f7f7f7;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.reset-defaults-hint {
+  font-size: 11px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reset-defaults-hint strong { color: #444; }
+
+.reset-defaults-btn {
+  font-size: 11px;
+  padding: 4px 9px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  color: #444;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.reset-defaults-btn:hover { background: #eee; }
 
 .section-header {
   display: flex;
@@ -648,8 +868,15 @@ function onSearchAcLeave() {
 .option-header:hover { background: #f0f0f0; }
 .option-card--expanded .option-header { background: #f0f5ff; }
 
-.option-name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.option-tag { font-size: 11px; color: #666; background: #eee; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.option-header-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.option-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.option-variant-line { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .option-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .chevron { font-size: 11px; color: #999; }
 
@@ -760,10 +987,12 @@ function onSearchAcLeave() {
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
-  cursor: default;
+  cursor: pointer;
   transition: background 0.1s;
 }
 .search-ac-option:hover { background: #f0f5ff; }
+.search-ac-option--added { cursor: default; }
+.search-ac-option--added:hover { background: transparent; }
 
 .search-ac-name {
   font-size: 12px;
@@ -1052,4 +1281,88 @@ function onSearchAcLeave() {
 .bulk-btn.confirm { background: #111; color: #fff; border-color: #111; }
 .bulk-btn.confirm:hover { background: #333; }
 .bulk-btn.confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Freeform JSON (Monaco) modal */
+.freeform-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+.freeform-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 90vw;
+  height: 85vh;
+  max-width: 1400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.freeform-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+.freeform-title { font-size: 14px; font-weight: 600; color: #111; }
+.freeform-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.freeform-monaco {
+  flex: 1;
+  min-height: 0;
+}
+.freeform-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #888;
+  background: #fff;
+}
+.freeform-errors {
+  flex-shrink: 0;
+  max-height: 30%;
+  overflow-y: auto;
+  border-top: 1px solid #eee;
+  padding: 8px 16px;
+  background: #fafafa;
+}
+.freeform-errors-title { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 6px; }
+.freeform-error-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  color: #b91c1c;
+  font-family: 'Menlo', 'Consolas', monospace;
+}
+.freeform-error-row.is-warning { color: #92400e; }
+.freeform-error-line { flex-shrink: 0; font-weight: 600; }
+.freeform-error-msg { white-space: pre-wrap; word-break: break-word; }
+.freeform-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+}
+.freeform-block-hint { font-size: 11px; color: #b91c1c; }
+.freeform-footer-btns { display: flex; gap: 8px; margin-left: auto; }
 </style>
