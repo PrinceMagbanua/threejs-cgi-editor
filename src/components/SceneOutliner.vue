@@ -9,7 +9,7 @@ const props = defineProps({
   sceneVersion: { type: Number, default: 0 },
   highlightedIds: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['select', 'toggle', 'highlight-toggle', 'add-as-variant', 'clear-highlights'])
+const emit = defineEmits(['select', 'toggle', 'highlight-toggle', 'add-as-variant', 'clear-highlights', 'inspect'])
 
 const search = ref('')
 const searchFocused = ref(false)
@@ -17,6 +17,7 @@ const searchRef = ref(null)
 const expanded = ref(new Set())
 const tree = ref(null)
 const treeRef = ref(null)
+const menuOpenFor = ref('')
 
 function rebuild() {
   tree.value = props.root ? buildTreeFromObject3D(props.root) : null
@@ -77,9 +78,13 @@ const filteredTree = computed(() => {
 
 function rowVisible(node) { return node.visible }
 function isHighlighted(id) { return props.highlightedIds.includes(id) }
+function isMenuOpen(id) { return menuOpenFor.value === id }
 function onToggle(node) { emit('toggle', { id: node.id, value: node.value }) }
 function onSelect(id) { emit('select', id) }
 function onHighlightToggle(id) { emit('highlight-toggle', id) }
+function onMenuToggle(id) { menuOpenFor.value = menuOpenFor.value === id ? '' : id }
+function onInspect(id) { menuOpenFor.value = ''; emit('inspect', id) }
+function closeMenu() { menuOpenFor.value = '' }
 
 function onCtrlF(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -90,8 +95,14 @@ function onCtrlF(e) {
   }
 }
 
-onMounted(() => document.addEventListener('keydown', onCtrlF))
-onUnmounted(() => document.removeEventListener('keydown', onCtrlF))
+onMounted(() => {
+  document.addEventListener('keydown', onCtrlF)
+  document.addEventListener('click', closeMenu)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', onCtrlF)
+  document.removeEventListener('click', closeMenu)
+})
 </script>
 
 <template>
@@ -126,11 +137,14 @@ onUnmounted(() => document.removeEventListener('keydown', onCtrlF))
         :visible-override="rowVisible"
         :is-expanded="isExpanded"
         :is-highlighted="isHighlighted"
+        :is-menu-open="isMenuOpen"
         :search-query="search"
         @toggle="onToggle"
         @select="onSelect"
         @toggle-expand="toggleExpand"
         @highlight-toggle="onHighlightToggle"
+        @menu-toggle="onMenuToggle"
+        @inspect="onInspect"
       />
     </div>
     <div v-else class="empty">No scene</div>

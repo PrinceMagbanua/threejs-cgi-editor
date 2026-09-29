@@ -17,7 +17,7 @@ const props = defineProps({
 const emit = defineEmits([
   'select', 'toggle', 'focus-object', 'json-updated',
   'tab-change', 'preview-part', 'restore-scene', 'preview-variant',
-  'highlight-toggle', 'add-as-variant', 'clear-highlights',
+  'highlight-toggle', 'add-as-variant', 'clear-highlights', 'inspect',
 ])
 
 const activeTab = ref('scene')
@@ -103,14 +103,18 @@ defineExpose({
             @highlight-toggle="$emit('highlight-toggle', $event)"
             @add-as-variant="$emit('add-as-variant')"
             @clear-highlights="$emit('clear-highlights')"
+            @inspect="$emit('inspect', $event)"
           />
         </div>
         <div class="tab-pane" v-show="activeTab === 'accessories'">
           <AccessoriesPanel
             :root="currentModel"
             :scene-version="sceneVersion"
+            :highlighted-ids="highlightedIds"
             @toggle="onToggle"
             @view-in-scene="onViewInScene"
+            @highlight-toggle="$emit('highlight-toggle', $event)"
+            @inspect="$emit('inspect', $event)"
           />
         </div>
         <div class="tab-pane" v-show="activeTab === 'json'">

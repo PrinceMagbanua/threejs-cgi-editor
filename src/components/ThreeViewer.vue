@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import * as THREE from 'three'
 import CameraControls from 'camera-controls'
 import RightPanel from './RightPanel.vue'
+import InspectorPanel from './InspectorPanel.vue'
 import { findObjectByUUID, buildNameMap } from '../utils/sceneTree.js'
 import { QUALITY_PRESETS } from '../utils/qualityPresets.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -68,6 +69,12 @@ const hdrHoverText = computed(() => (hdrName.value ? 'Replace' : 'Upload'))
 
 // Outliner state
 const selectedNodeId = ref('')
+const inspectedNodeId = ref('')
+const inspectedObject = computed(() => (
+  inspectedNodeId.value && currentModel.value
+    ? findObjectByUUID(currentModel.value, inspectedNodeId.value)
+    : null
+))
 
 // Quality
 const currentQuality = ref('High')
@@ -805,6 +812,21 @@ function handleOutlinerSelect(id) {
   if (obj) flashObject(obj)
 }
 
+function handleInspect(id) {
+  if (!currentModel.value) return
+  selectedNodeId.value = id
+  inspectedNodeId.value = id
+  const obj = findObjectByUUID(currentModel.value, id)
+  if (obj) flashObject(obj)
+}
+
+function closeInspector() { inspectedNodeId.value = '' }
+
+function handleInspectorChanged() {
+  sceneVersion.value++
+  requestRender()
+}
+
 async function clearCache() {
   if (!confirm('Are you sure? This will remove cached GLB/JSON files and set HDR to the default one.')) return
   try {
@@ -992,6 +1014,14 @@ onBeforeUnmount(() => {
       <div v-if="loadedGLTF && !jsonConfig" class="json-hint">
         Upload a JSON config or build one in the JSON tab →
       </div>
+
+      <InspectorPanel
+        :object="inspectedObject"
+        :open="!!inspectedObject"
+        :scene-version="sceneVersion"
+        @close="closeInspector"
+        @changed="handleInspectorChanged"
+      />
     </div>
 
     <!-- Right panel (flex sibling) -->
@@ -1017,6 +1047,7 @@ onBeforeUnmount(() => {
       @highlight-toggle="toggleHighlight"
       @add-as-variant="openAddVariantModal"
       @clear-highlights="clearHighlights"
+      @inspect="handleInspect"
     />
 
     <!-- Scene pick tooltip -->

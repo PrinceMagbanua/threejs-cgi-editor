@@ -4,8 +4,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 const props = defineProps({
   root: { type: Object, required: false },
   sceneVersion: { type: Number, default: 0 },
+  highlightedIds: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['toggle', 'view-in-scene'])
+const emit = defineEmits(['toggle', 'view-in-scene', 'highlight-toggle', 'inspect'])
 
 const search = ref('')
 const menuOpenFor = ref('')
@@ -44,6 +45,15 @@ function viewInScene(obj) {
   closeMenus()
   emit('view-in-scene', obj.uuid)
 }
+function isHighlighted(uuid) { return props.highlightedIds.includes(uuid) }
+function onIsolate(obj) {
+  closeMenus()
+  emit('highlight-toggle', obj.uuid)
+}
+function onInspect(obj) {
+  closeMenus()
+  emit('inspect', obj.uuid)
+}
 onMounted(() => document.addEventListener('click', closeMenus))
 onUnmounted(() => document.removeEventListener('click', closeMenus))
 
@@ -59,13 +69,19 @@ const scan = computed(() => {
   props.sceneVersion
   const accObjects = []
   const propObjects = []
+  const stockAccTypeObjects = []
   if (props.root) {
     props.root.traverse((obj) => {
-      if (obj.name?.includes('ACC_')) accObjects.push(obj)
-      if (obj.name?.includes('PROP_')) propObjects.push(obj)
+      const isAcc = obj.name?.includes('ACC_')
+      const isProp = obj.name?.includes('PROP_')
+      if (isAcc) accObjects.push(obj)
+      if (isProp) propObjects.push(obj)
+      // Ordinary body parts (not ACC_/PROP_) can opt into the same accType
+      // slot system so equipping an accessory hides the stock part it replaces.
+      if (!isAcc && !isProp && obj.userData?.accType) stockAccTypeObjects.push(obj)
     })
   }
-  return { accObjects, propObjects }
+  return { accObjects, propObjects, stockAccTypeObjects }
 })
 
 const activeAccNames = computed(() => {
@@ -151,6 +167,27 @@ function recomputePropsVisibility() {
   })
 }
 
+// Any ordinary body part sharing an ACC_'s accType occupies the same physical
+// slot on the car (e.g. the stock wheel this ACC_ wheel accessory replaces),
+// so it's hidden for as long as any visible accessory carries that accType.
+function recomputeAccTypeVisibility() {
+  const activeAccTypes = new Set()
+  scan.value.accObjects.forEach((o) => {
+    if (o.visible && o.userData?.accType) activeAccTypes.add(o.userData.accType)
+  })
+
+  scan.value.stockAccTypeObjects.forEach((obj) => {
+    const desired = !activeAccTypes.has(obj.userData.accType)
+    if (!!obj.visible !== desired) {
+      emit('toggle', { id: obj.uuid, value: desired })
+    }
+  })
+}
+
+function accTypeTooltip(type) {
+  return `"${type}" accessory slot. Turning this ACC_ on will automatically hide any other part in the model tagged with accType = "${type}" — accessory or ordinary body part alike — since it occupies the same slot on the car (e.g. the stock part this accessory replaces). Turn it back off to restore that part, as long as no other visible accessory shares this accType.`
+}
+
 function onRowClick(e, acc) {
   if (e.target.closest('.row-menu')) return
   onAccToggle(acc)
@@ -161,6 +198,7 @@ function onAccToggle(acc) {
   // so it can be read immediately after emitting to resolve prop matches/conflicts.
   emit('toggle', { id: acc.uuid, value: !acc.visible })
   recomputePropsVisibility()
+  recomputeAccTypeVisibility()
 }
 </script>
 
@@ -197,10 +235,17 @@ function onAccToggle(acc) {
           <span class="acc-name">
             <span class="name-prefix">{{ splitName(entry.acc.name).prefix }}</span><span class="name-main">{{ splitName(entry.acc.name).rest }}</span>
           </span>
+          <span
+            class="acctype-badge"
+            v-if="entry.acc.userData?.accType"
+            :title="accTypeTooltip(entry.acc.userData.accType)"
+          >Acc Type: {{ entry.acc.userData.accType }}</span>
           <span class="acc-count" v-if="entry.props.length">{{ entry.props.length }} prop{{ entry.props.length !== 1 ? 's' : '' }}</span>
-          <div class="row-menu" @click.stop>
+          <div class="row-menu" :class="{ open: menuOpenFor === entry.acc.uuid }" @click.stop>
             <button class="menu-btn" @click="toggleMenu(entry.acc.uuid)" title="More">⋮</button>
             <div class="menu-dropdown" v-if="menuOpenFor === entry.acc.uuid">
+              <button class="menu-item" @click="onIsolate(entry.acc)">{{ isHighlighted(entry.acc.uuid) ? '◉ Remove from Isolation' : '◎ Isolate' }}</button>
+              <button class="menu-item" @click="onInspect(entry.acc)">Inspect Details</button>
               <button class="menu-item" @click="viewInScene(entry.acc)">View in Scene</button>
             </div>
           </div>
@@ -218,9 +263,11 @@ function onAccToggle(acc) {
               <span class="name-prefix">{{ splitName(prop.name).prefix }}</span><span class="name-main">{{ splitName(prop.name).rest }}</span>
             </span>
             <span class="prop-status">{{ propStatus(prop, entry.acc.name).label }}</span>
-            <div class="row-menu" @click.stop>
+            <div class="row-menu" :class="{ open: menuOpenFor === prop.uuid }" @click.stop>
               <button class="menu-btn" @click="toggleMenu(prop.uuid)" title="More">⋮</button>
               <div class="menu-dropdown" v-if="menuOpenFor === prop.uuid">
+                <button class="menu-item" @click="onIsolate(prop)">{{ isHighlighted(prop.uuid) ? '◉ Remove from Isolation' : '◎ Isolate' }}</button>
+                <button class="menu-item" @click="onInspect(prop)">Inspect Details</button>
                 <button class="menu-item" @click="viewInScene(prop)">View in Scene</button>
               </div>
             </div>
@@ -257,9 +304,11 @@ function onAccToggle(acc) {
           <span class="name-prefix">{{ splitName(prop.name).prefix }}</span><span class="name-main">{{ splitName(prop.name).rest }}</span>
         </span>
         <span class="prop-status">no match data — never auto-shown</span>
-        <div class="row-menu" @click.stop>
+        <div class="row-menu" :class="{ open: menuOpenFor === prop.uuid }" @click.stop>
           <button class="menu-btn" @click="toggleMenu(prop.uuid)" title="More">⋮</button>
           <div class="menu-dropdown" v-if="menuOpenFor === prop.uuid">
+            <button class="menu-item" @click="onIsolate(prop)">{{ isHighlighted(prop.uuid) ? '◉ Remove from Isolation' : '◎ Isolate' }}</button>
+            <button class="menu-item" @click="onInspect(prop)">Inspect Details</button>
             <button class="menu-item" @click="viewInScene(prop)">View in Scene</button>
           </div>
         </div>
@@ -313,6 +362,13 @@ function onAccToggle(acc) {
 .acc-header input[type="checkbox"] { width: 14px; height: 14px; accent-color: #111; flex-shrink: 0; }
 .acc-name { font-size: 12.5px; color: #222; flex: 1; word-break: break-all; }
 .acc-count { font-size: 10px; color: #999; flex-shrink: 0; }
+
+.acctype-badge {
+  font-size: 9.5px; font-weight: 600; color: #6a4fc0;
+  background: #f2edff; border: 1px solid #ddd0ff;
+  border-radius: 10px; padding: 1px 7px; flex-shrink: 0;
+  cursor: help; white-space: nowrap;
+}
 
 .prop-list { margin-left: 20px; padding-left: 8px; border-left: 1px solid #eee; display: flex; flex-direction: column; gap: 3px; margin-top: 3px; }
 .prop-row {
@@ -368,7 +424,10 @@ function onAccToggle(acc) {
 .info-popover p { margin: 2px 0; }
 .info-popover code { background: #f2f2f2; color: #b9860a; border-radius: 3px; padding: 1px 4px; font-size: 10.5px; }
 
-.row-menu { position: relative; flex-shrink: 0; }
+.row-menu { position: relative; flex-shrink: 0; display: none; }
+.acc-header:hover .row-menu,
+.prop-row:hover .row-menu,
+.row-menu.open { display: block; }
 .menu-btn {
   width: 18px; height: 18px;
   border: none; background: transparent;
