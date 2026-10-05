@@ -1021,6 +1021,7 @@ onBeforeUnmount(() => {
         :scene-version="sceneVersion"
         @close="closeInspector"
         @changed="handleInspectorChanged"
+        @material-changed="requestRender"
       />
     </div>
 
